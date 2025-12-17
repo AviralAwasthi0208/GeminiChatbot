@@ -144,7 +144,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 async function generateGeminiResponse(chat, userMessage) {
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-pro",
+      model: "gemini-2.5-flash",
     })
 
     const parts = []

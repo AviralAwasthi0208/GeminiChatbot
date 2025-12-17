@@ -15,7 +15,7 @@ export default function ChatSidebar({ onNewChat }) {
 
         <div className="flex justify-end gap-2">
           <button
-            onClick={() => showWarning.dismiss?.()}
+            onClick={() => {}}
             className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700"
           >
             Cancel
@@ -67,23 +67,23 @@ export default function ChatSidebar({ onNewChat }) {
         <div className="space-y-1">
           {chats.map((chat) => (
             <div
-              key={chat.id}
-              onClick={() => fetchChat(chat.id)}
+              key={chat.chatId}
+              onClick={() => fetchChat(chat.chatId)}
               className={`group flex items-center justify-between gap-2 px-3 py-2 rounded-lg cursor-pointer transition ${
-                currentChat?.id === chat.id
+                currentChat?.chatId === chat.chatId
                   ? "bg-indigo-100 dark:bg-indigo-900/40"
                   : "hover:bg-gray-100 dark:hover:bg-gray-900"
               }`}
             >
               <p className="text-sm font-medium truncate flex-1">
-                {chat.title}
+                {chat.title || "New Chat"}
               </p>
 
               {/* Delete icon */}
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  confirmDelete(chat.id)
+                  confirmDelete(chat.chatId)
                 }}
                 className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition"
                 title="Delete chat"

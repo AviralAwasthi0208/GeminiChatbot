@@ -6,8 +6,29 @@ const {
   getChat,
   updateChat,
   deleteChat,
+  getAllChats,
 } = require("../storage/chatStorage")
 const { generateGeminiResponse } = require("../utils/gemini")
+// -----------------------------------
+// Get all chats (for sidebar)
+// -----------------------------------
+router.get("/", async (req, res) => {
+  try {
+    const chats = getAllChats()
+
+    res.json({
+      success: true,
+      chats,
+    })
+  } catch (error) {
+    console.error("Get chats error:", error)
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch chats",
+    })
+  }
+})
+
 
 // -----------------------------------
 // Get specific chat
@@ -236,12 +257,29 @@ router.post("/:chatId/message", async (req, res) => {
       files: messageFiles.length > 0 ? messageFiles : undefined,
       timestamp: new Date(),
     })
+    // If chat has no title or default title, update it
+if (!chat.title || chat.title === "New Chat") {
+  let newTitle = "New Chat"
+
+  // Priority 1: File name
+  if (files && files.length > 0 && files[0].originalName) {
+    newTitle = files[0].originalName
+  }
+  // Priority 2: First message text
+  else if (message && message.trim()) {
+    newTitle = message.substring(0, 30)
+  }
+
+  chat.title = newTitle
+}
+
 
     // Save updated context
     chat = updateChat(chatId, {
       messages: chat.messages,
       documentText,
       image,
+      title: chat.title,
     })
     
     console.log("Chat context updated - documentText length:", documentText ? documentText.length : 0, "image:", !!image)

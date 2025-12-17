@@ -1,6 +1,9 @@
+
+
+
 "use client"
 
-import { createContext, useState, useContext } from "react"
+import { createContext, useState, useContext, useEffect } from "react"
 import api from "../utils/api"
 import { showError, showSuccess } from "../utils/toast"
 
@@ -15,17 +18,37 @@ export const useChat = () => {
 }
 
 export const ChatProvider = ({ children }) => {
+  // 🔹 Chat list for sidebar
+  const [chats, setChats] = useState([])
+
+  // 🔹 Current chat
   const [currentChat, setCurrentChat] = useState(null)
   const [chatId, setChatId] = useState(null)
+
+  // 🔹 UI states
   const [loading, setLoading] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState([])
   const [pendingFiles, setPendingFiles] = useState([])
 
+  // =====================================================
+  // 🔥 CLEAR ALL CHATS ON PAGE REFRESH (IMPORTANT FIX)
+  // =====================================================
+  useEffect(() => {
+    setChats([])
+    setCurrentChat(null)
+    setChatId(null)
+    setPendingFiles([])
+    setUploadingFiles([])
+  }, [])
+
+  // ===============================
+  // Fetch single chat (ON DEMAND ONLY)
+  // ===============================
   const fetchChat = async (id) => {
     try {
       setLoading(true)
       const response = await api.get(`/chat/${id}`)
-      if (response.data.success) {
+      if (response.data?.success) {
         setCurrentChat(response.data.chat)
         setChatId(id)
       }
@@ -36,19 +59,27 @@ export const ChatProvider = ({ children }) => {
     }
   }
 
+  // ===============================
+  // Create new chat
+  // ===============================
   const createNewChat = async () => {
     try {
-      // Clear all state for new chat
       setCurrentChat(null)
       setChatId(null)
       setPendingFiles([])
       clearUploadingFiles()
 
       const response = await api.post("/chat")
-      if (response.data.success) {
+
+      if (response.data?.success) {
         const newChat = response.data.chat
+
         setCurrentChat(newChat)
         setChatId(newChat.chatId)
+
+        // ✅ Add chat locally (NO fetch on refresh)
+        setChats((prev) => [newChat, ...prev])
+
         return newChat
       }
     } catch (error) {
@@ -57,23 +88,25 @@ export const ChatProvider = ({ children }) => {
     }
   }
 
+  // ===============================
+  // Send message
+  // ===============================
   const sendMessage = async (id, message, files = []) => {
     try {
-      // Log what we're sending
-      console.log("Sending message with files:", files.map(f => ({
-        type: f.type,
-        hasExtractedText: !!f.extractedText,
-        extractedTextType: typeof f.extractedText,
-        extractedTextLength: f.extractedText ? String(f.extractedText).length : 0,
-        originalName: f.originalName
-      })))
-      
       const response = await api.post(`/chat/${id}/message`, {
         message,
         files,
       })
-      if (response.data.success) {
-        setCurrentChat(response.data.chat)
+
+      if (response.data?.success) {
+        const updatedChat = response.data.chat
+        setCurrentChat(updatedChat)
+
+        // 🔥 Update sidebar chat title/lastMessage locally
+        setChats((prev) =>
+          prev.map((c) => (c.chatId === id ? updatedChat : c))
+        )
+
         return response.data
       }
     } catch (error) {
@@ -82,19 +115,31 @@ export const ChatProvider = ({ children }) => {
     }
   }
 
+  // ===============================
+  // Delete chat
+  // ===============================
   const deleteChat = async (id) => {
     try {
       await api.delete(`/chat/${id}`)
+
+      setChats((prev) => prev.filter((c) => c.chatId !== id))
+
       if (chatId === id) {
         setCurrentChat(null)
         setChatId(null)
       }
+
+      showSuccess("Chat deleted")
     } catch (error) {
       console.error("Delete chat error:", error)
+      showError("Failed to delete chat")
       throw error
     }
   }
 
+  // ===============================
+  // File upload helpers (UNCHANGED)
+  // ===============================
   const addUploadingFile = (file) => {
     setUploadingFiles((prev) => [...prev, file])
   }
@@ -107,17 +152,15 @@ export const ChatProvider = ({ children }) => {
     setUploadingFiles([])
   }
 
-  // Shared file upload function that can be used by drag-drop, paste, and file input
   const uploadFiles = async (fileList) => {
     const selectedFiles = Array.from(fileList)
     if (selectedFiles.length === 0) return []
 
-    // Create preview objects for uploading files
     const uploadingFileObjects = selectedFiles.map((file, index) => {
       const fileId = `uploading-${Date.now()}-${index}`
       const isImage = file.type.startsWith("image/")
       const preview = isImage ? URL.createObjectURL(file) : null
-      
+
       const fileObj = {
         id: fileId,
         originalName: file.name,
@@ -125,17 +168,18 @@ export const ChatProvider = ({ children }) => {
         preview,
         file,
       }
-      
+
       addUploadingFile(fileObj)
       return fileObj
     })
 
     try {
       const uploadedFiles = []
+
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i]
         const uploadingFileObj = uploadingFileObjects[i]
-        
+
         const formData = new FormData()
         formData.append("file", file)
 
@@ -143,47 +187,28 @@ export const ChatProvider = ({ children }) => {
           headers: { "Content-Type": "multipart/form-data" },
         })
 
-        if (response.data.success) {
-          const fileData = response.data.file
-          // Ensure extractedText is preserved correctly
-          // If it's null/undefined, keep it as is; if it's a string, ensure it's a string
-          if (fileData.extractedText !== null && fileData.extractedText !== undefined && typeof fileData.extractedText !== "string") {
-            console.warn("extractedText is not a string, converting:", typeof fileData.extractedText, fileData.extractedText)
-            fileData.extractedText = String(fileData.extractedText)
-          }
-          uploadedFiles.push(fileData)
+        if (response.data?.success) {
+          uploadedFiles.push(response.data.file)
         }
-        
-        // Remove from uploading state
+
         removeUploadingFile(uploadingFileObj.id)
-        
-        // Clean up preview URL if it was an image
-        if (uploadingFileObj.preview) {
+        if (uploadingFileObj.preview)
           URL.revokeObjectURL(uploadingFileObj.preview)
-        }
       }
 
       if (uploadedFiles.length > 0) {
-        showSuccess(`${uploadedFiles.length} file(s) uploaded successfully!`)
+        showSuccess(`${uploadedFiles.length} file(s) uploaded successfully`)
       }
+
       return uploadedFiles
     } catch (error) {
       console.error("File upload error:", error)
-      showError("Failed to upload file. Please try again.")
-      
-      // Clean up all uploading files on error
-      uploadingFileObjects.forEach((fileObj) => {
-        removeUploadingFile(fileObj.id)
-        if (fileObj.preview) {
-          URL.revokeObjectURL(fileObj.preview)
-        }
-      })
-      
+      showError("File upload failed")
+      uploadingFileObjects.forEach((f) => removeUploadingFile(f.id))
       return []
     }
   }
 
-  // Upload files and add to pending (for drag-drop/paste)
   const uploadFilesAndAddToPending = async (fileList) => {
     const uploadedFiles = await uploadFiles(fileList)
     if (uploadedFiles.length > 0) {
@@ -196,7 +221,11 @@ export const ChatProvider = ({ children }) => {
     setPendingFiles([])
   }
 
+  // ===============================
+  // Context value
+  // ===============================
   const value = {
+    chats,
     currentChat,
     chatId,
     loading,

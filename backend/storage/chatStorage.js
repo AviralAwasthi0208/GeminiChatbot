@@ -1,5 +1,3 @@
-// In-memory chat storage
-// Chat state is stored in RAM and lost on server restart
 
 const chats = new Map()
 
@@ -27,6 +25,20 @@ function createChat() {
 // Get chat by ID
 function getChat(chatId) {
   return chats.get(chatId) || null
+}
+
+
+function getAllChats() {
+  // `chats` is a Map; use `Array.from(chats.values())` to get stored chat objects.
+  return Array.from(chats.values()).map((chat) => ({
+    id: chat.chatId, // chat objects use `chatId` as the identifier
+    title: chat.title || "New Chat",
+    lastMessage:
+      chat.messages && chat.messages.length > 0
+        ? chat.messages[chat.messages.length - 1].content
+        : "",
+    updatedAt: chat.updatedAt || chat.createdAt,
+  }))
 }
 
 // Create chat with specific ID (for auto-recovery)
@@ -58,10 +70,6 @@ function deleteChat(chatId) {
   return chats.delete(chatId)
 }
 
-// Get all chats (for compatibility, returns empty array since we don't persist)
-function getAllChats() {
-  return Array.from(chats.values())
-}
 
 module.exports = {
   createChat,

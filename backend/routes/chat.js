@@ -1,9 +1,16 @@
 const express = require("express")
 const router = express.Router()
-const { createChat, getChat, updateChat, deleteChat } = require("../storage/chatStorage")
+const {
+  createChat,
+  getChat,
+  updateChat,
+  deleteChat,
+} = require("../storage/chatStorage")
 const { generateGeminiResponse } = require("../utils/gemini")
 
+// -----------------------------------
 // Get specific chat
+// -----------------------------------
 router.get("/:chatId", async (req, res) => {
   try {
     const chat = getChat(req.params.chatId)
@@ -15,10 +22,7 @@ router.get("/:chatId", async (req, res) => {
       })
     }
 
-    res.json({
-      success: true,
-      chat,
-    })
+    res.json({ success: true, chat })
   } catch (error) {
     console.error("Get chat error:", error)
     res.status(500).json({
@@ -28,7 +32,9 @@ router.get("/:chatId", async (req, res) => {
   }
 })
 
+// -----------------------------------
 // Create new chat
+// -----------------------------------
 router.post("/", async (req, res) => {
   try {
     const chat = createChat()
@@ -46,11 +52,20 @@ router.post("/", async (req, res) => {
   }
 })
 
-// Send message
+// -----------------------------------
+// Send message (TEXT + FILES)
+// -----------------------------------
 router.post("/:chatId/message", async (req, res) => {
   try {
     const { message, files } = req.body
     const chatId = req.params.chatId
+
+    if (!message && (!files || files.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Message or file is required",
+      })
+    }
 
     let chat = getChat(chatId)
 
@@ -61,72 +76,85 @@ router.post("/:chatId/message", async (req, res) => {
       })
     }
 
-    // Process files: extract document text and store image as base64
+    // -----------------------------
+    // Existing context
+    // -----------------------------
     let documentText = chat.documentText || null
     let image = chat.image || null
-    let imageMimeType = chat.imageMimeType || null
 
-    // Prepare files for message (for display)
     const messageFiles = []
 
-    if (files && files.length > 0) {
-      // Extract document text from PDF/TXT files
-      const documentFiles = files.filter((f) => f.type === "document" && f.extractedText)
+    // -----------------------------
+    // Handle uploaded files
+    // -----------------------------
+    if (Array.isArray(files) && files.length > 0) {
+      // Documents (PDF / TXT)
+      const documentFiles = files.filter(
+        (f) => f.type === "document" && typeof f.extractedText === "string"
+      )
+
       if (documentFiles.length > 0) {
-        documentText = documentFiles.map((f) => f.extractedText).join("\n\n")
-        // Add document files to message for display
-        messageFiles.push(...documentFiles.map((f) => ({
-          type: f.type,
-          originalName: f.originalName,
-          extractedText: f.extractedText,
-        })))
+        documentText = documentFiles
+          .map((f) => f.extractedText)
+          .join("\n\n")
+
+        messageFiles.push(
+          ...documentFiles.map((f) => ({
+            type: "document",
+            originalName: f.originalName,
+          }))
+        )
       }
 
-      // Store image as base64 (PNG/JPG)
-      const imageFiles = files.filter((f) => f.type === "image" && f.base64)
+      // Images (Gemini-ready inlineData)
+      const imageFiles = files.filter(
+        (f) => f.type === "image" && f.imagePart
+      )
+
       if (imageFiles.length > 0) {
-        // Use the first image
-        image = imageFiles[0].base64
-        imageMimeType = imageFiles[0].mimeType || "image/png"
-        // Add image file to message for display
+        image = imageFiles[0].imagePart // already Gemini formatted
+
         messageFiles.push({
           type: "image",
           originalName: imageFiles[0].originalName,
-          base64: imageFiles[0].base64,
-          mimeType: imageFiles[0].mimeType,
         })
       }
     }
 
+    // -----------------------------
     // Add user message
-    const userMessage = {
+    // -----------------------------
+    chat.messages.push({
       role: "user",
-      content: message,
+      content: message || "",
       files: messageFiles.length > 0 ? messageFiles : undefined,
       timestamp: new Date(),
-    }
+    })
 
-    chat.messages.push(userMessage)
-
-    // Update chat with document text and image
+    // Save updated context
     chat = updateChat(chatId, {
       messages: chat.messages,
       documentText,
       image,
-      imageMimeType,
     })
 
-    // Generate bot response using Gemini
-    const botResponse = await generateGeminiResponse(chat, message, files)
+    // -----------------------------
+    // Generate Gemini response
+    // -----------------------------
+    const botResponse = await generateGeminiResponse(
+      chat,
+      message || ""
+    )
 
+    // -----------------------------
     // Add bot message
+    // -----------------------------
     chat.messages.push({
       role: "assistant",
       content: botResponse,
       timestamp: new Date(),
     })
 
-    // Update chat with bot response
     chat = updateChat(chatId, {
       messages: chat.messages,
     })
@@ -145,7 +173,9 @@ router.post("/:chatId/message", async (req, res) => {
   }
 })
 
+// -----------------------------------
 // Delete chat
+// -----------------------------------
 router.delete("/:chatId", async (req, res) => {
   try {
     const deleted = deleteChat(req.params.chatId)

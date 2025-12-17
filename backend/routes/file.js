@@ -5,49 +5,66 @@ const { extractTextFromPDF, extractTextFromTXT } = require("../utils/fileProcess
 
 function mapMimeToFileType(mimeType) {
   if (!mimeType) return "document"
-
   if (mimeType.startsWith("image/")) return "image"
-  if (mimeType.startsWith("application/")) return "document"
   if (mimeType.startsWith("text/")) return "document"
-  if (mimeType.startsWith("audio/")) return "audio"
-  if (mimeType.startsWith("video/")) return "video"
-
+  if (mimeType === "application/pdf") return "document"
   return "document"
 }
 
-// Configure multer for memory storage
+// ✅ Render-safe multer config
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 5 * 1024 * 1024, // ⬅️ 5MB max (IMPORTANT)
   },
 })
 
-// Upload file - process and return extracted text/base64
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
-        message: "No file uploaded",
+        message: "No file received",
       })
     }
 
-    const fileType = mapMimeToFileType(req.file.mimetype)
+    const mimeType = req.file.mimetype
+    const fileType = mapMimeToFileType(mimeType)
 
     let extractedText = null
-    let base64 = null
+    let imagePart = null
 
-    // Extract text from PDF/TXT documents
-    if (req.file.mimetype === "application/pdf") {
-      extractedText = await extractTextFromPDF(req.file.buffer)
-    } else if (req.file.mimetype === "text/plain") {
+    // ✅ PDF parsing (guarded)
+    if (mimeType === "application/pdf") {
+      try {
+        extractedText = await extractTextFromPDF(req.file.buffer)
+      } catch (err) {
+        console.error("PDF parse failed:", err)
+        return res.status(400).json({
+          success: false,
+          message: "Failed to read PDF file",
+        })
+      }
+    }
+
+    // ✅ TXT parsing (safe)
+    if (mimeType === "text/plain") {
       extractedText = await extractTextFromTXT(req.file.buffer)
     }
 
-    // Convert image to base64 (PNG/JPG only)
-    if (fileType === "image" && (req.file.mimetype === "image/png" || req.file.mimetype === "image/jpeg" || req.file.mimetype === "image/jpg")) {
-      base64 = req.file.buffer.toString("base64")
+    // ✅ Image → Gemini-safe format
+    if (
+      fileType === "image" &&
+      (mimeType === "image/png" || mimeType === "image/jpeg")
+    ) {
+      const base64 = req.file.buffer.toString("base64")
+
+      imagePart = {
+        inlineData: {
+          data: base64,
+          mimeType,
+        },
+      }
     }
 
     res.json({
@@ -56,15 +73,14 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         type: fileType,
         originalName: req.file.originalname,
         extractedText,
-        base64, // base64 string for images (PNG/JPG)
-        mimeType: req.file.mimetype,
+        imagePart, // ⬅️ NOT raw base64 anymore
       },
     })
   } catch (error) {
-    console.error("Upload error:", error)
+    console.error("UPLOAD ERROR:", error)
     res.status(500).json({
       success: false,
-      message: "Error processing file",
+      message: error.message || "File upload failed",
     })
   }
 })

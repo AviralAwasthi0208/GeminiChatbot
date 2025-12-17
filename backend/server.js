@@ -9,7 +9,7 @@ const fileRoutes = require("./routes/file");
 
 const app = express();
 
-// ✅ CORS — simple and assignment-safe
+
 app.use(cors());
 
 // Body parsers

@@ -59,6 +59,15 @@ export const ChatProvider = ({ children }) => {
 
   const sendMessage = async (id, message, files = []) => {
     try {
+      // Log what we're sending
+      console.log("Sending message with files:", files.map(f => ({
+        type: f.type,
+        hasExtractedText: !!f.extractedText,
+        extractedTextType: typeof f.extractedText,
+        extractedTextLength: f.extractedText ? String(f.extractedText).length : 0,
+        originalName: f.originalName
+      })))
+      
       const response = await api.post(`/chat/${id}/message`, {
         message,
         files,
@@ -135,7 +144,14 @@ export const ChatProvider = ({ children }) => {
         })
 
         if (response.data.success) {
-          uploadedFiles.push(response.data.file)
+          const fileData = response.data.file
+          // Ensure extractedText is preserved correctly
+          // If it's null/undefined, keep it as is; if it's a string, ensure it's a string
+          if (fileData.extractedText !== null && fileData.extractedText !== undefined && typeof fileData.extractedText !== "string") {
+            console.warn("extractedText is not a string, converting:", typeof fileData.extractedText, fileData.extractedText)
+            fileData.extractedText = String(fileData.extractedText)
+          }
+          uploadedFiles.push(fileData)
         }
         
         // Remove from uploading state

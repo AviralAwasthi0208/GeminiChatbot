@@ -36,7 +36,13 @@ const ChatMessages = () => {
                   <div key={fileIndex} className="flex items-center gap-2">
                     {file.type === "image" ? (
                       <img
-                        src={file.base64 ? `data:${file.mimeType || "image/png"};base64,${file.base64}` : file.url || "/placeholder.svg"}
+                        src={
+                          file.base64 
+                            ? `data:${file.mimeType || "image/png"};base64,${file.base64}` 
+                            : file.imagePart?.inlineData?.data 
+                              ? `data:${file.imagePart.inlineData.mimeType || "image/png"};base64,${file.imagePart.inlineData.data}`
+                              : file.url || "/placeholder.svg"
+                        }
                         alt={file.originalName}
                         className="max-w-xs rounded-lg"
                       />

@@ -2,6 +2,7 @@ const express = require("express")
 const router = express.Router()
 const {
   createChat,
+  createChatWithId,
   getChat,
   updateChat,
   deleteChat,
@@ -60,6 +61,10 @@ router.post("/:chatId/message", async (req, res) => {
     const { message, files } = req.body
     const chatId = req.params.chatId
 
+    console.log("Received message request for chatId:", chatId)
+    console.log("Message:", message ? message.substring(0, 50) + "..." : "empty")
+    console.log("Files:", files ? files.length : 0)
+
     if (!message && (!files || files.length === 0)) {
       return res.status(400).json({
         success: false,
@@ -69,11 +74,20 @@ router.post("/:chatId/message", async (req, res) => {
 
     let chat = getChat(chatId)
 
+    // Auto-create chat if it doesn't exist (handles server restarts)
     if (!chat) {
-      return res.status(404).json({
-        success: false,
-        message: "Chat not found",
-      })
+      console.log("Chat not found, creating new chat with ID:", chatId)
+      if (chatId && chatId.startsWith("chat_")) {
+        // Create chat with the requested ID
+        chat = createChatWithId(chatId)
+        console.log("Auto-created chat:", chatId)
+      } else {
+        // Invalid chatId format, return error
+        return res.status(400).json({
+          success: false,
+          message: "Invalid chat ID format",
+        })
+      }
     }
 
     // -----------------------------
@@ -88,15 +102,85 @@ router.post("/:chatId/message", async (req, res) => {
     // Handle uploaded files
     // -----------------------------
     if (Array.isArray(files) && files.length > 0) {
+      // Detailed logging for debugging
+      files.forEach((f, idx) => {
+        console.log(`File ${idx}:`, {
+          type: f.type,
+          hasExtractedText: !!f.extractedText,
+          extractedTextType: typeof f.extractedText,
+          extractedTextLength: f.extractedText ? f.extractedText.length : 0,
+          extractedTextPreview: f.extractedText ? f.extractedText.substring(0, 100) : null,
+          originalName: f.originalName
+        })
+      })
+
       // Documents (PDF / TXT)
-      const documentFiles = files.filter(
-        (f) => f.type === "document" && typeof f.extractedText === "string"
-      )
+      const documentFiles = files.filter((f) => {
+        // Handle null/undefined/empty string cases
+        // Note: typeof null === 'object' in JavaScript (language quirk), so check for null explicitly
+        let textValue = f.extractedText
+        
+        // Check if null or undefined first (before typeof check)
+        if (textValue === null || textValue === undefined) {
+          textValue = ""
+        } 
+        // If it's actually an object (not null), try to convert
+        else if (typeof textValue === "object" && textValue !== null) {
+          console.warn("extractedText is an object (not null), attempting to convert:", textValue)
+          textValue = String(textValue)
+        }
+        // If it's not a string, convert it
+        else if (typeof textValue !== "string") {
+          textValue = String(textValue)
+        }
+        
+        // Trim and check length
+        const trimmedText = textValue.trim()
+        const isValid = f.type === "document" && trimmedText.length > 0
+        
+        if (f.type === "document") {
+          if (!isValid) {
+            console.log(`⚠️ Document file has no extractable text:`, {
+              type: f.type,
+              originalExtractedText: f.extractedText,
+              originalExtractedTextType: typeof f.extractedText,
+              isNull: f.extractedText === null,
+              isUndefined: f.extractedText === undefined,
+              normalizedText: textValue,
+              trimmedLength: trimmedText.length,
+              originalName: f.originalName
+            })
+          } else {
+            console.log(`✅ Document file has extractable text:`, {
+              type: f.type,
+              trimmedLength: trimmedText.length,
+              preview: trimmedText.substring(0, 100),
+              originalName: f.originalName
+            })
+          }
+        }
+        
+        // Update the file object with normalized text for later use
+        if (isValid) {
+          f.extractedText = trimmedText
+        }
+        
+        return isValid
+      })
 
       if (documentFiles.length > 0) {
         documentText = documentFiles
-          .map((f) => f.extractedText)
+          .map((f) => {
+            const text = typeof f.extractedText === "string" ? f.extractedText.trim() : String(f.extractedText || "").trim()
+            return text
+          })
+          .filter(text => text.length > 0)
           .join("\n\n")
+        
+        console.log("✅ Document text extracted successfully, length:", documentText.length)
+        if (documentText.length > 0) {
+          console.log("Preview:", documentText.substring(0, 200))
+        }
 
         messageFiles.push(
           ...documentFiles.map((f) => ({
@@ -104,6 +188,26 @@ router.post("/:chatId/message", async (req, res) => {
             originalName: f.originalName,
           }))
         )
+      } else {
+        console.log("❌ No valid document files found after filtering")
+        console.log("Files received:", files.length)
+        files.forEach((f, idx) => {
+          if (f.type === "document") {
+            console.log(`  File ${idx} (document):`, {
+              type: f.type,
+              extractedTextExists: f.hasOwnProperty("extractedText"),
+              extractedTextValue: f.extractedText,
+              extractedTextType: typeof f.extractedText,
+              extractedTextLength: f.extractedText ? String(f.extractedText).length : 0
+            })
+          }
+        })
+        
+        // If we have document files but no extractable text, inform the user
+        const documentFilesWithoutText = files.filter(f => f.type === "document")
+        if (documentFilesWithoutText.length > 0) {
+          console.log("⚠️ Document files uploaded but contain no extractable text (might be image-only PDFs)")
+        }
       }
 
       // Images (Gemini-ready inlineData)
@@ -117,6 +221,8 @@ router.post("/:chatId/message", async (req, res) => {
         messageFiles.push({
           type: "image",
           originalName: imageFiles[0].originalName,
+          base64: imageFiles[0].base64, // Include base64 for display
+          mimeType: imageFiles[0].mimeType, // Include mimeType for display
         })
       }
     }
@@ -137,10 +243,30 @@ router.post("/:chatId/message", async (req, res) => {
       documentText,
       image,
     })
+    
+    console.log("Chat context updated - documentText length:", documentText ? documentText.length : 0, "image:", !!image)
 
     // -----------------------------
     // Generate Gemini response
     // -----------------------------
+    // Ensure chat object is valid
+    if (!chat || !Array.isArray(chat.messages)) {
+      throw new Error("Invalid chat object structure")
+    }
+
+    // If user asked about PDF/document but we have no extractable text, 
+    // still process the message so Gemini can inform the user
+    const hasDocumentRequest = message && (
+      message.toLowerCase().includes("pdf") || 
+      message.toLowerCase().includes("document") ||
+      message.toLowerCase().includes("summarize")
+    )
+    
+    if (hasDocumentRequest && (!documentText || documentText.trim().length === 0) && files && files.length > 0) {
+      console.log("⚠️ User requested document processing but no extractable text found")
+      // Still proceed - Gemini will inform the user
+    }
+
     const botResponse = await generateGeminiResponse(
       chat,
       message || ""
@@ -166,9 +292,11 @@ router.post("/:chatId/message", async (req, res) => {
     })
   } catch (error) {
     console.error("Send message error:", error)
+    console.error("Error stack:", error.stack)
     res.status(500).json({
       success: false,
-      message: "Error generating response",
+      message: error.message || "Error generating response",
+      error: process.env.NODE_ENV === "development" ? error.stack : undefined,
     })
   }
 })

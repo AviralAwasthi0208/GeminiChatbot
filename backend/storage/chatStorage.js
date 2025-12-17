@@ -29,6 +29,21 @@ function getChat(chatId) {
   return chats.get(chatId) || null
 }
 
+// Create chat with specific ID (for auto-recovery)
+function createChatWithId(chatId) {
+  const chat = {
+    chatId,
+    messages: [],
+    documentText: null,
+    image: null,
+    imageMimeType: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+  chats.set(chatId, chat)
+  return chat
+}
+
 // Update chat
 function updateChat(chatId, updates) {
   const chat = chats.get(chatId)
@@ -50,6 +65,7 @@ function getAllChats() {
 
 module.exports = {
   createChat,
+  createChatWithId,
   getChat,
   updateChat,
   deleteChat,

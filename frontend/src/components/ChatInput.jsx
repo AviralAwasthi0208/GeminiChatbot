@@ -5,7 +5,7 @@ import { useChat } from "../context/ChatContext"
 import { showSuccess, showError, showWarning } from "../utils/toast"
 
 const ChatInput = () => {
-  const { currentChat, sendMessage, clearUploadingFiles, uploadFiles, pendingFiles, clearPendingFiles, uploadFilesAndAddToPending } = useChat()
+  const { currentChat, createNewChat, sendMessage, clearUploadingFiles, uploadFiles, pendingFiles, clearPendingFiles, uploadFilesAndAddToPending } = useChat()
   const [message, setMessage] = useState("")
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -125,19 +125,30 @@ const ChatInput = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!message.trim() || !currentChat) return
+    if (!message.trim() && files.length === 0) return
 
     setSending(true)
 
     try {
-      await sendMessage(currentChat.chatId, message, files)
+      // Auto-create chat if it doesn't exist
+      let chatToUse = currentChat
+      if (!chatToUse) {
+        const newChat = await createNewChat()
+        chatToUse = newChat
+        if (!chatToUse || !chatToUse.chatId) {
+          throw new Error("Failed to create chat")
+        }
+      }
+
+      await sendMessage(chatToUse.chatId, message, files)
       setMessage("")
       setFiles([])
       clearUploadingFiles()
       showSuccess("Message sent successfully!")
     } catch (error) {
       console.error("Send message error:", error)
-      showError("Failed to send message. Please try again.")
+      const errorMessage = error.response?.data?.message || error.message || "Failed to send message. Please try again."
+      showError(errorMessage)
     } finally {
       setSending(false)
     }
@@ -176,7 +187,13 @@ const ChatInput = () => {
             <div key={index} className="relative group">
               {file.type === "image" ? (
                 <img
-                  src={file.base64 ? `data:${file.mimeType || "image/png"};base64,${file.base64}` : file.preview || "/placeholder.svg"}
+                  src={
+                    file.base64 
+                      ? `data:${file.mimeType || "image/png"};base64,${file.base64}` 
+                      : file.imagePart?.inlineData?.data 
+                        ? `data:${file.imagePart.inlineData.mimeType || "image/png"};base64,${file.imagePart.inlineData.data}`
+                        : file.preview || "/placeholder.svg"
+                  }
                   alt={file.originalName}
                   className="h-20 w-20 object-cover rounded-lg"
                 />

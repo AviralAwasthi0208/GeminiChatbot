@@ -1,0 +1,76 @@
+/* React Toastify Styles - Separate from Tailwind */
+@import 'react-toastify/dist/ReactToastify.css';
+
+/* Custom Toastify styles that work with dark mode */
+.Toastify__toast-container {
+  z-index: 9999;
+}
+
+.Toastify__toast {
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.Toastify__toast--success {
+  background: #10b981;
+  color: white;
+}
+
+.Toastify__toast--error {
+  background: #ef4444;
+  color: white;
+}
+
+.Toastify__toast--warning {
+  background: #f59e0b;
+  color: white;
+}
+
+.Toastify__toast--info {
+  background: #3b82f6;
+  color: white;
+}
+
+/* Dark mode support */
+html.dark .Toastify__toast {
+  background: #1f2937;
+  color: #f9fafb;
+}
+
+html.dark .Toastify__toast--success {
+  background: #059669;
+}
+
+html.dark .Toastify__toast--error {
+  background: #dc2626;
+}
+
+html.dark .Toastify__toast--warning {
+  background: #d97706;
+}
+
+html.dark .Toastify__toast--info {
+  background: #2563eb;
+}
+
+.Toastify__progress-bar {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+html.dark .Toastify__progress-bar {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.Toastify__close-button {
+  color: white;
+  opacity: 0.8;
+}
+
+html.dark .Toastify__close-button {
+  color: #f9fafb;
+}
+
+.Toastify__close-button:hover {
+  opacity: 1;
+}
+

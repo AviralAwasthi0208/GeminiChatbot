@@ -329,13 +329,20 @@ if (!chat.title || chat.title === "New Chat") {
       chat,
     })
   } catch (error) {
-    console.error("Send message error:", error)
-    console.error("Error stack:", error.stack)
-    res.status(500).json({
-      success: false,
-      message: error.message || "Error generating response",
-      error: process.env.NODE_ENV === "development" ? error.stack : undefined,
-    })
+     console.error("Send message error:", error)
+
+  const statusCode = error.statusCode || 500
+
+  let clientMessage = "Gemini API error"
+
+  if (statusCode === 429) {
+    clientMessage = "Gemini API quota exhausted"
+  }
+
+  res.status(statusCode).json({
+    success: false,
+    message: clientMessage,
+  })
   }
 })
 
